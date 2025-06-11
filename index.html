@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Enhanced Pixel Art Converter</title>
+    <title>Pixelator</title>
     <style>
         body {
             font-family: 'Google Sans', Arial, sans-serif;
@@ -242,11 +242,21 @@
                     <option value="grape-soda">Grape Soda</option>
                     <option value="infrared">Infrared</option>
                     <option value="trichroic">Trichroic (IR/UV)</option>
-                    <option value="reduced8">Reduced Original (8 colors)</option>
+                    <!-- <option value="reduced8">Reduced Original (8 colors)</option>
                     <option value="reduced16">Reduced Original (16 colors)</option>
                     <option value="reduced32">Reduced Original (32 colors)</option>
+                    <option value="reduced-primaries">Reduced Major Colors</option> -->
                 </select>
             </label>
+            <label>Pre-Quantize Colors:
+            <select id="prequant">
+                <option value="none">None</option>
+                <option value="reduced8">8 Colors</option>
+                <option value="reduced16">16 Colors</option>
+                <option value="reduced32">32 Colors</option>
+                <option value="reduced-primaries">Major Colors</option>
+            </select>
+        </label>
         </div>
         <div class="canvas-container">
             <canvas id="canvas"></canvas>
@@ -497,6 +507,26 @@
                     [54, 33, 89], [104, 58, 110], [153, 93, 153], [204, 153, 204], [255, 204, 255],
                     [221, 160, 221], [186, 85, 211], [148, 0, 211], [230, 230, 250], [255, 255, 255]
                 ],
+                'reduced-primaries-better': [
+                    // Reds
+                    [230, 25, 75], [180, 0, 36], [255, 128, 128],
+                    // Oranges
+                    [245, 130, 48], [255, 180, 80],
+                    // Yellows
+                    [255, 255, 25], [255, 255, 153],
+                    // Greens
+                    [60, 180, 75], [180, 255, 180], [0, 128, 0],
+                    // Blues
+                    [0, 130, 200], [180, 180, 255], [0, 0, 128],
+                    // Purples
+                    [145, 30, 180], [200, 162, 200],
+                    // Browns
+                    [128, 0, 0], [80, 60, 40], [210, 180, 140],
+                    // Grays/Black/White
+                    [0, 0, 0], [100, 100, 100], [200, 200, 200], [255, 255, 255],
+                    // Cyan/Magenta
+                    [70, 240, 240], [240, 50, 230]
+                ],
                 'infrared': null,
                 'trichroic': null
             };
@@ -571,6 +601,7 @@
             const pixelSize = parseInt(document.getElementById('pixelSize').value);
             const algorithm = document.getElementById('algorithm').value;
             const palette = document.getElementById('palette').value;
+            const prequant = document.getElementById('prequant').value;
             ctx.drawImage(img, 0, 0);
             let imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             let data = imageData.data;
@@ -656,6 +687,59 @@
                 return;
             }
 
+            // === Pre-Quantize Colors if selected ===
+            let preQuantPalette = null;
+            if (prequant !== "none") {
+                if (prequant.startsWith('reduced')) {
+                    // Use your k-means quantization code here, just like before
+                    let numColors = parseInt(prequant.replace('reduced', ''), 10) || 8;
+                    let allColors = [];
+                    for (let i = 0; i < data.length; i += 4) {
+                        allColors.push([data[i], data[i+1], data[i+2]]);
+                    }
+                    let clusters = [];
+                    for (let i = 0; i < numColors; i++) {
+                        clusters.push(allColors[Math.floor(Math.random() * allColors.length)]);
+                    }
+                    for (let iter = 0; iter < 2; iter++) {
+                        let buckets = Array.from({length: numColors}, () => []);
+                        for (let c of allColors) {
+                            let minDist = Infinity, idx = 0;
+                            for (let i = 0; i < clusters.length; i++) {
+                                let d = (c[0]-clusters[i][0])**2 + (c[1]-clusters[i][1])**2 + (c[2]-clusters[i][2])**2;
+                                if (d < minDist) { minDist = d; idx = i; }
+                            }
+                            buckets[idx].push(c);
+                        }
+                        for (let i = 0; i < clusters.length; i++) {
+                            if (buckets[i].length) {
+                                let r = 0, g = 0, b = 0;
+                                for (let c of buckets[i]) { r += c[0]; g += c[1]; b += c[2]; }
+                                clusters[i] = [
+                                    Math.round(r / buckets[i].length),
+                                    Math.round(g / buckets[i].length),
+                                    Math.round(b / buckets[i].length)
+                                ];
+                            }
+                        }
+                    }
+                    preQuantPalette = clusters;
+                } else if (prequant === "reduced-primaries-better") {
+                    preQuantPalette = palettes["reduced-primaries-better"];
+                }
+                // Apply pre-quantization to image data
+                for (let i = 0; i < data.length; i += 4) {
+                    let [r, g, b] = [data[i], data[i+1], data[i+2]];
+                    let minDist = Infinity, match = [r, g, b];
+                    for (let c of preQuantPalette) {
+                        let d = (r-c[0])**2 + (g-c[1])**2 + (b-c[2])**2;
+                        if (d < minDist) { minDist = d; match = c; }
+                    }
+                    data[i] = match[0];
+                    data[i+1] = match[1];
+                    data[i+2] = match[2];
+                }
+            }
             // Quantized palette for reduced modes
             let quantizedPalette = null;
             if (palette.startsWith('reduced')) {
@@ -811,7 +895,11 @@
             clearTimeout(updateTimeout);
             updateTimeout = setTimeout(drawPixelArt, 100);
         }
-        ['dither', 'pixelSize', 'algorithm', 'palette', 'brightness', 'contrast', 'hue', 'saturation', 'invert', 'crtGlow', 'crtCurvature'].forEach(id => {
+        // ['dither', 'pixelSize', 'algorithm', 'palette', 'brightness', 'contrast', 'hue', 'saturation', 'invert', 'crtGlow', 'crtCurvature'].forEach(id => {
+        //     document.getElementById(id).addEventListener('input', debouncedUpdate);
+        //     document.getElementById(id).addEventListener('change', drawPixelArt);
+        // });
+        ['dither', 'pixelSize', 'algorithm', 'palette', 'prequant', 'brightness', 'contrast', 'hue', 'saturation', 'invert', 'crtGlow', 'crtCurvature'].forEach(id => {
             document.getElementById(id).addEventListener('input', debouncedUpdate);
             document.getElementById(id).addEventListener('change', drawPixelArt);
         });
