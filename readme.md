@@ -8,6 +8,11 @@ Choose from many color palettes inspired by classic hardware and modern aestheti
 
 Since this is all done in the browser it can definitely get a little sluggish.
 
+**Instructions:**
+- Download
+- Open the html file in your browser
+- Upload and image
+
 **Features:**
 - Multiple color palettes (Game Boy, NES, Vaporwave, Synthwave, and more)
 - Dithering and pixelation algorithms
