@@ -240,6 +240,11 @@
                     <option value="blueprint">Blueprint</option>
                     <option value="rose-gold">Rose Gold</option>
                     <option value="grape-soda">Grape Soda</option>
+                    <option value="infrared">Infrared</option>
+                    <option value="trichroic">Trichroic (IR/UV)</option>
+                    <option value="reduced8">Reduced Original (8 colors)</option>
+                    <option value="reduced16">Reduced Original (16 colors)</option>
+                    <option value="reduced32">Reduced Original (32 colors)</option>
                 </select>
             </label>
         </div>
@@ -256,7 +261,7 @@
         const ctx = canvas.getContext('2d');
         let img = new Image();
 
-        function applyPalette(r, g, b, palette) {
+        function applyPalette(r, g, b, palette, quantizedPalette) {
             if (palette === 'grayscale8') {
                 let avg = Math.round((r * 0.299 + g * 0.587 + b * 0.114));
                 avg = Math.floor(avg / 32) * 32;
@@ -301,6 +306,56 @@
                 let tg = Math.min(255, 0.349 * r + 0.686 * g + 0.168 * b);
                 let tb = Math.min(255, 0.272 * r + 0.534 * g + 0.131 * b);
                 return [tr, tg, tb];
+            }
+            if (palette === 'infrared') {
+                // Calculate brightness (intensity)
+                let intensity = (r * 0.299 + g * 0.587 + b * 0.114) / 255;
+                // Map intensity to a thermal color scale
+                // Blue -> Cyan -> Green -> Yellow -> Orange -> Red -> White
+                let thermalColors = [
+                    [0, 0, 128],    // dark blue
+                    [0, 0, 255],    // blue
+                    [0, 255, 255],  // cyan
+                    [0, 255, 0],    // green
+                    [255, 255, 0],  // yellow
+                    [255, 128, 0],  // orange
+                    [255, 0, 0],    // red
+                    [255, 255, 255] // white
+                ];
+                let idx = intensity * (thermalColors.length - 1);
+                let low = Math.floor(idx);
+                let high = Math.ceil(idx);
+                let t = idx - low;
+                let c1 = thermalColors[low];
+                let c2 = thermalColors[high];
+                // Linear interpolation between colors
+                let outR = Math.round(c1[0] + (c2[0] - c1[0]) * t);
+                let outG = Math.round(c1[1] + (c2[1] - c1[1]) * t);
+                let outB = Math.round(c1[2] + (c2[2] - c1[2]) * t);
+                return [outR, outG, outB];
+            }
+            if (palette === 'trichroic') {
+                // Simulate: R=visible (gray), G=UV (yellow), B=IR (blue)
+                let gray = Math.round((r + g + b) / 3);
+                let uv = g; // treat green as UV for simulation
+                let ir = b; // treat blue as IR for simulation
+                // Map: visible=gray, IR=blue, UV=yellow
+                return [
+                    Math.max(gray, uv), // yellowish if UV strong
+                    Math.max(gray, uv),
+                    Math.max(gray, ir)  // blueish if IR strong
+                ];
+            }
+            if (palette.startsWith('reduced')) {
+                // Use the quantizedPalette passed in
+                let minDist = Infinity, match = [r, g, b];
+                if (quantizedPalette) {
+                    for (let c of quantizedPalette) {
+                        let d = (r-c[0])**2 + (g-c[1])**2 + (b-c[2])**2;
+                        if (d < minDist) { minDist = d; match = c; }
+                    }
+                }
+                return match;
             }
             const palettes = {
                 'colorhunt-ocean': [
@@ -441,7 +496,9 @@
                 'grape-soda': [
                     [54, 33, 89], [104, 58, 110], [153, 93, 153], [204, 153, 204], [255, 204, 255],
                     [221, 160, 221], [186, 85, 211], [148, 0, 211], [230, 230, 250], [255, 255, 255]
-                ]
+                ],
+                'infrared': null,
+                'trichroic': null
             };
             if (palettes[palette]) {
                 const pal = palettes[palette];
@@ -598,6 +655,44 @@
                 downloadBtn.disabled = false;
                 return;
             }
+
+            // Quantized palette for reduced modes
+            let quantizedPalette = null;
+            if (palette.startsWith('reduced')) {
+                let numColors = parseInt(palette.replace('reduced', ''), 10) || 8;
+                let allColors = [];
+                for (let i = 0; i < data.length; i += 4) {
+                    allColors.push([data[i], data[i+1], data[i+2]]);
+                }
+                let clusters = [];
+                for (let i = 0; i < numColors; i++) {
+                    clusters.push(allColors[Math.floor(Math.random() * allColors.length)]);
+                }
+                for (let iter = 0; iter < 2; iter++) {
+                    let buckets = Array.from({length: numColors}, () => []);
+                    for (let c of allColors) {
+                        let minDist = Infinity, idx = 0;
+                        for (let i = 0; i < clusters.length; i++) {
+                            let d = (c[0]-clusters[i][0])**2 + (c[1]-clusters[i][1])**2 + (c[2]-clusters[i][2])**2;
+                            if (d < minDist) { minDist = d; idx = i; }
+                        }
+                        buckets[idx].push(c);
+                    }
+                    for (let i = 0; i < clusters.length; i++) {
+                        if (buckets[i].length) {
+                            let r = 0, g = 0, b = 0;
+                            for (let c of buckets[i]) { r += c[0]; g += c[1]; b += c[2]; }
+                            clusters[i] = [
+                                Math.round(r / buckets[i].length),
+                                Math.round(g / buckets[i].length),
+                                Math.round(b / buckets[i].length)
+                            ];
+                        }
+                    }
+                }
+                quantizedPalette = clusters;
+            }
+
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             for (let y = 0; y < canvas.height; y += pixelSize) {
                 for (let x = 0; x < canvas.width; x += pixelSize) {
@@ -614,7 +709,7 @@
                     r = Math.round(r / count);
                     g = Math.round(g / count);
                     b = Math.round(b / count);
-                    [r, g, b] = applyPalette(r, g, b, palette);
+                    [r, g, b] = applyPalette(r, g, b, palette, quantizedPalette);
                     if (algorithm === 'glitch') {
                         if (Math.random() < dither * 0.03) {
                             let shift = (Math.random() - 0.5) * 30;
@@ -656,49 +751,35 @@
                 // Glow
                 if (document.getElementById('crtGlow').checked) {
                     ctx.save();
-                    // ctx.globalAlpha = 0.15;
-                    // ctx.filter = "blur(2px)";
-                    ctx.globalAlpha = 0.5; // or even 0.5 for a strong glow
-                    ctx.filter = "blur(6px)"; // try 6px or higher
+                    ctx.globalAlpha = 0.5;
+                    ctx.filter = "blur(6px)";
                     ctx.drawImage(canvas, 0, 0);
                     ctx.filter = "none";
                     ctx.restore();
                 }
                 // Curvature
-                // if (document.getElementById('crtCurvature').checked) {
-                //     let temp = document.createElement('canvas');
-                //     temp.width = canvas.width;
-                //     temp.height = canvas.height;
-                //     temp.getContext('2d').drawImage(canvas, 0, 0);
-                //     ctx.clearRect(0, 0, canvas.width, canvas.height);
-                //     ctx.save();
-                //     ctx.setTransform(1, 0.1, 0.1, 1, -canvas.width*0.05, -canvas.height*0.05);
-                //     ctx.drawImage(temp, 0, 0);
-                //     ctx.setTransform(1, 0, 0, 1, 0, 0);
-                //     ctx.restore();
-                // }
                 if (document.getElementById('crtCurvature').checked) {
-                let temp = document.createElement('canvas');
-                temp.width = canvas.width;
-                temp.height = canvas.height;
-                temp.getContext('2d').drawImage(canvas, 0, 0);
-                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                    let temp = document.createElement('canvas');
+                    temp.width = canvas.width;
+                    temp.height = canvas.height;
+                    temp.getContext('2d').drawImage(canvas, 0, 0);
+                    ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-                // Barrel distortion: draw in strips, scaling each strip
-                let strips = 120; // more strips = smoother curve
-                for (let i = 0; i < strips; i++) {
-                    let sy = Math.floor(i * canvas.height / strips);
-                    let sh = Math.ceil(canvas.height / strips);
-                    let curve = Math.pow((i / (strips - 1) - 0.5) * 2, 2); // 0 at center, 1 at edges
-                    let scale = 1 - 0.12 * curve; // adjust 0.12 for more/less curve
-                    let dx = (canvas.width - canvas.width * scale) / 2;
-                    ctx.drawImage(
-                        temp,
-                        0, sy, temp.width, sh,
-                        dx, sy, canvas.width * scale, sh
-                    );
+                    // Barrel distortion: draw in strips, scaling each strip
+                    let strips = 120;
+                    for (let i = 0; i < strips; i++) {
+                        let sy = Math.floor(i * canvas.height / strips);
+                        let sh = Math.ceil(canvas.height / strips);
+                        let curve = Math.pow((i / (strips - 1) - 0.5) * 2, 2);
+                        let scale = 1 - 0.12 * curve;
+                        let dx = (canvas.width - canvas.width * scale) / 2;
+                        ctx.drawImage(
+                            temp,
+                            0, sy, temp.width, sh,
+                            dx, sy, canvas.width * scale, sh
+                        );
+                    }
                 }
-            }
             }
             downloadBtn.disabled = false;
         }
