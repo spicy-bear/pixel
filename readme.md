@@ -10,6 +10,10 @@ Choose from many color palettes inspired by classic hardware and modern aestheti
 Since this is all done in the browser it can definitely get a little sluggish.
 
 ---
+**It's currently hosted here:**
+[https://spicy-bear.github.io/pixel/](https://spicy-bear.github.io/pixel/)
+
+---
 **Instructions:**
 - Download
 - Open the html file in your browser
