@@ -17,7 +17,7 @@ Since this is all done in the browser it can definitely get a little sluggish.
 **Instructions:**
 - Download
 - Open the html file in your browser
-- Upload and image
+- Upload an image
 
 ---
 **Features:**
