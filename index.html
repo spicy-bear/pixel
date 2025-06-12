@@ -886,7 +886,9 @@
             // === Pre-Quantize Colors if selected ===
             let preQuantPalette = null;
             if (prequant !== "none") {
-                if (prequant.startsWith('reduced')) {
+                if (prequant === "reduced-primaries") {
+                    preQuantPalette = palettes["reduced-primaries"];
+                } else if (prequant.startsWith('reduced')) {
                     // Use your k-means quantization code here, just like before
                     let numColors = parseInt(prequant.replace('reduced', ''), 10) || 8;
                     let allColors = [];
@@ -920,8 +922,6 @@
                         }
                     }
                     preQuantPalette = clusters;
-                } else if (prequant === "reduced-primaries") {
-                    preQuantPalette = palettes["reduced-primaries"];
                 }
                 // Apply pre-quantization to image data
                 for (let i = 0; i < data.length; i += 4) {
